@@ -1,0 +1,235 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VideoSync - Frame Similarity Search</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios@1.6.2/dist/axios.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.23.6/babel.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #1e3a8a, #4c1d95);
+        }
+        .card-hover {
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+        }
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .path-text {
+            word-wrap: break-word;
+            white-space: normal;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-gray-900 dark:text-gray-100 dark:bg-gray-900 transition-colors duration-300">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const App = () => {
+            const [theme, setTheme] = useState('light');
+            const [file, setFile] = useState(null);
+            const [uploadStatus, setUploadStatus] = useState('');
+            const [frameId, setFrameId] = useState('');
+            const [searchResults, setSearchResults] = useState([]);
+            const [isLoading, setIsLoading] = useState(false);
+            const [error, setError] = useState('');
+
+            // Toggle theme
+            useEffect(() => {
+                document.body.className = theme === 'dark' ? 'dark min-h-screen text-gray-100 dark:bg-gray-900' : 'min-h-screen text-gray-900';
+            }, [theme]);
+
+            // Handle file selection
+            const handleFileChange = (e) => {
+                setFile(e.target.files[0]);
+                setUploadStatus('');
+                setError('');
+            };
+
+            // Handle drag-and-drop
+            const handleDrop = (e) => {
+                e.preventDefault();
+                setFile(e.dataTransfer.files[0]);
+                setUploadStatus('');
+                setError('');
+            };
+
+            // Upload video
+            const handleUpload = async () => {
+                if (!file) {
+                    setError('Please select a video file');
+                    return;
+                }
+                setIsLoading(true);
+                setError('');
+                const formData = new FormData();
+                formData.append('file', file);
+                try {
+                    const response = await axios.post('http://localhost:8000/upload-video/', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    setUploadStatus(`Uploaded: ${response.data.filename}, ${response.data.num_frames} frames processed`);
+                    setFile(null);
+                } catch (err) {
+                    setError(err.response?.data?.detail || 'Error uploading video');
+                }
+                setIsLoading(false);
+            };
+
+            // Search similar frames
+            const handleSearch = async () => {
+                if (!frameId || isNaN(frameId)) {
+                    setError('Please enter a valid frame ID');
+                    return;
+                }
+                setIsLoading(true);
+                setError('');
+                try {
+                    // Fetch the feature vector from the backend
+                    const vectorResponse = await axios.get(`http://localhost:8000/compute-vector/${frameId}`);
+                    const vector = vectorResponse.data.vector;
+
+                    // Search Qdrant with the fetched vector
+                    const searchResponse = await axios.post('http://localhost:8000/search-frames/', {
+                        vector,
+                        limit: 5
+                    });
+                    setSearchResults(searchResponse.data.results);
+                } catch (err) {
+                    setError(err.response?.data?.detail || 'Error searching frames');
+                }
+                setIsLoading(false);
+            };
+
+            return (
+                <div className="gradient-bg min-h-screen">
+                    {/* Header */}
+                    <header className="flex justify-between items-center p-6 bg-white dark:bg-gray-800 shadow-lg">
+                        <h1 className="text-3xl font-bold text-indigo-600 dark:text-indigo-400">VideoSync</h1>
+                        <button
+                            onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+                            className="p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition"
+                        >
+                            {theme === 'light' ? '🌙 Dark' : '☀️ Light'}
+                        </button>
+                    </header>
+
+                    {/* Main Content */}
+                    <main className="max-w-7xl mx-auto p-6 space-y-12">
+                        {/* Upload Section */}
+                        <section className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg card-hover">
+                            <h2 className="text-2xl font-semibold mb-4">Upload Video</h2>
+                            <div
+                                onDrop={handleDrop}
+                                onDragOver={(e) => e.preventDefault()}
+                                className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center"
+                            >
+                                <input
+                                    type="file"
+                                    accept="video/mp4"
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                    id="fileInput"
+                                />
+                                <label htmlFor="fileInput" className="cursor-pointer text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    {file ? file.name : 'Drag & drop an MP4 video or click to select'}
+                                </label>
+                            </div>
+                            <button
+                                onClick={handleUpload}
+                                disabled={isLoading || !file}
+                                className="mt-4 w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                            >
+                                {isLoading ? 'Uploading...' : 'Upload Video'}
+                            </button>
+                            {uploadStatus && <p className="mt-4 text-green-600 dark:text-green-400">{uploadStatus}</p>}
+                            {error && <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>}
+                        </section>
+
+                        {/* Search Section */}
+                        <section className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg card-hover">
+                            <h2 className="text-2xl font-semibold mb-4">Search Similar Frames</h2>
+                            <div className="flex space-x-4">
+                                <input
+                                    type="number"
+                                    value={frameId}
+                                    onChange={(e) => setFrameId(e.target.value)}
+                                    placeholder="Enter frame ID (e.g., 0)"
+                                    className="w-full p-2 border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                                />
+                                <button
+                                    onClick={handleSearch}
+                                    disabled={isLoading}
+                                    className="bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition"
+                                >
+                                    {isLoading ? 'Searching...' : 'Search'}
+                                </button>
+                            </div>
+                            {error && <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>}
+                        </section>
+
+                        {/* Preview Searched Frame */}
+                        {frameId && searchResults.length > 0 && (
+                            <section className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg fade-in">
+                                <h2 className="text-2xl font-semibold mb-4">Searched Frame (ID: {frameId})</h2>
+                                <div className="flex justify-center">
+                                    <img
+                                        src={`http://localhost:8000/frame-image/${frameId}`}
+                                        alt={`Frame ${frameId}`}
+                                        className="w-64 h-48 object-cover rounded-lg"
+                                    />
+                                </div>
+                            </section>
+                        )}
+
+                        {/* Results Section */}
+                        {searchResults.length > 0 && (
+                            <section className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg fade-in">
+                                <h2 className="text-2xl font-semibold mb-4">Search Results</h2>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {searchResults.map((result) => (
+                                        <div key={result.frame_id} className="bg-gray-100 dark:bg-gray-700 rounded-lg p-4 card-hover">
+                                            <img
+                                                src={`http://localhost:8000/frame-image/${result.frame_id}`}
+                                                alt={`Frame ${result.frame_id}`}
+                                                className="w-full h-48 object-cover rounded-lg mb-2"
+                                            />
+                                            <p className="font-semibold">Frame ID: {result.frame_id}</p>
+                                            <p>Similarity Score: {result.score.toFixed(4)}</p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 path-text">
+                                                Path: {result.image_path}
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+```
