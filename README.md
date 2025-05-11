@@ -99,9 +99,5 @@ Color histograms may not capture complex patterns (e.g., objects, textures).
 Large videos may slow down processing.
 Qdrant must be running before starting the app.
 
-Notes
 
-Ensure the Git repository link is accessible (public or shared with reviewers).
-Test all endpoints with sample videos before submission.
-Deadline: Monday, May 12, 2025, 12 noon IST.
 
